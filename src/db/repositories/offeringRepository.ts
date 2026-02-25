@@ -6,11 +6,16 @@ export type OfferingStatus =
   | 'closed'
   | 'paused'
   | 'cancelled'
+  | 'active'
+  | 'completed'
   | string;
 
 export interface Offering {
   id: string;
   issuer_user_id?: string;
+  issuer_id?: string;
+  name?: string;
+  symbol?: string;
   status?: OfferingStatus;
   created_at?: Date;
   updated_at?: Date;
@@ -69,12 +74,16 @@ export class OfferingRepository {
     return this.mapOffering(result.rows[0]);
   }
 
+  async findById(id: string): Promise<Offering | null> {
+    return this.getById(id);
+  }
+
   async listByIssuer(
     issuerUserId: string,
     filters: ListOfferingsFilters = {}
   ): Promise<Offering[]> {
     const values: unknown[] = [issuerUserId];
-    const whereClauses: string[] = ['issuer_user_id = $1'];
+    const whereClauses: string[] = ['(issuer_user_id = $1 OR issuer_id = $1)'];
 
     if (filters.status !== undefined) {
       values.push(filters.status);
@@ -133,13 +142,24 @@ export class OfferingRepository {
     return this.update(id, { status });
   }
 
+  async isOwner(offeringId: string, issuerId: string): Promise<boolean> {
+    const offering = await this.findById(offeringId);
+    if (!offering) {
+      return false;
+    }
+
+    return (offering.issuer_id ?? offering.issuer_user_id) === issuerId;
+  }
+
   private getDefinedEntries(payload: Record<string, unknown>) {
     return Object.entries(payload).filter(([, value]) => value !== undefined);
   }
 
   private mapOffering(row: Record<string, unknown>): Offering {
-    return {
-      ...(row as Offering),
-    };
+    const offering = { ...(row as Offering) };
+    if (!offering.issuer_id && typeof offering.issuer_user_id === 'string') {
+      offering.issuer_id = offering.issuer_user_id;
+    }
+    return offering;
   }
 }
